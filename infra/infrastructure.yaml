@@ -1,0 +1,63 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Infraestructura para despliegue CI/CD
+
+Resources:
+
+  InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles: [ !Ref InstanceRole ]
+      InstanceProfileName: WebAppInstanceProfile
+
+  InstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: WebAppInstanceRole
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonEC2RoleforAWSCodeDeploy
+        - arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess
+
+  LaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateName: WebAppLT
+      LaunchTemplateData:
+        ImageId: ami-0c02fb55956c7d316  # Actualiza según tu región
+        InstanceType: t2.micro
+        IamInstanceProfile:
+          Name: !Ref InstanceProfile
+        UserData:
+          Fn::Base64: |
+            #!/bin/bash
+            yum update -y
+            yum install -y ruby wget
+            cd /home/ec2-user
+            wget https://aws-codedeploy-<REGION>.s3.<REGION>.amazonaws.com/latest/install
+            chmod +x ./install
+            ./install auto
+            systemctl start codedeploy-agent
+            systemctl enable codedeploy-agent
+
+  AutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      AutoScalingGroupName: WebAppASG
+      MinSize: 1
+      MaxSize: 1
+      DesiredCapacity: 1
+      LaunchTemplate:
+        LaunchTemplateId: !Ref LaunchTemplate
+        Version: !GetAtt LaunchTemplate.LatestVersionNumber
+      VPCZoneIdentifier:
+        - subnet-xxxxxxxx  # Reemplazar por una subnet válida de tu VPC
+
+Outputs:
+  AutoScalingGroupName:
+    Value: !Ref AutoScalingGroup
