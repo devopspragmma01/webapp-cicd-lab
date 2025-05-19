@@ -1,63 +1,66 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: Infraestructura para despliegue CI/CD
+Description: EC2 con CodeDeploy y Apache
+
+Parameters:
+  KeyName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: Nombre del par de llaves
 
 Resources:
-
-  InstanceProfile:
-    Type: AWS::IAM::InstanceProfile
-    Properties:
-      Roles: [ !Ref InstanceRole ]
-      InstanceProfileName: WebAppInstanceProfile
-
   InstanceRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: WebAppInstanceRole
+      RoleName: WebAppEC2Role
       AssumeRolePolicyDocument:
-        Version: '2012-10-17'
         Statement:
           - Effect: Allow
             Principal:
               Service: ec2.amazonaws.com
             Action: sts:AssumeRole
       ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/service-role/AmazonEC2RoleforAWSCodeDeploy
-        - arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess
+        - arn:aws:iam::aws:policy/AmazonEC2FullAccess
+        - arn:aws:iam::aws:policy/AmazonS3FullAccess
 
-  LaunchTemplate:
-    Type: AWS::EC2::LaunchTemplate
+  InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
     Properties:
-      LaunchTemplateName: WebAppLT
-      LaunchTemplateData:
-        ImageId: ami-0c02fb55956c7d316  # Actualiza según tu región
-        InstanceType: t2.micro
-        IamInstanceProfile:
-          Name: !Ref InstanceProfile
-        UserData:
-          Fn::Base64: |
-            #!/bin/bash
-            yum update -y
-            yum install -y ruby wget
-            cd /home/ec2-user
-            wget https://aws-codedeploy-<REGION>.s3.<REGION>.amazonaws.com/latest/install
-            chmod +x ./install
-            ./install auto
-            systemctl start codedeploy-agent
-            systemctl enable codedeploy-agent
+      Roles:
+        - !Ref InstanceRole
 
-  AutoScalingGroup:
-    Type: AWS::AutoScaling::AutoScalingGroup
+  WebAppInstance:
+    Type: AWS::EC2::Instance
     Properties:
-      AutoScalingGroupName: WebAppASG
-      MinSize: 1
-      MaxSize: 1
-      DesiredCapacity: 1
-      LaunchTemplate:
-        LaunchTemplateId: !Ref LaunchTemplate
-        Version: !GetAtt LaunchTemplate.LatestVersionNumber
-      VPCZoneIdentifier:
-        - subnet-xxxxxxxx  # Reemplazar por una subnet válida de tu VPC
+      InstanceType: t2.micro
+      KeyName: !Ref KeyName
+      IamInstanceProfile: !Ref InstanceProfile
+      ImageId: ami-0c2b8ca1dad447f8a # Amazon Linux 2 en us-east-1
+      SecurityGroups:
+        - !Ref WebAppSG
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          yum update -y
+          yum install -y ruby wget
+          cd /home/ec2-user
+          wget https://aws-codedeploy-us-east-1.s3.us-east-1.amazonaws.com/latest/install
+          chmod +x ./install
+          ./install auto
+          service codedeploy-agent start
+          yum install -y httpd
+          systemctl enable httpd
+
+  WebAppSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Web SG
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
 
 Outputs:
-  AutoScalingGroupName:
-    Value: !Ref AutoScalingGroup
+  InstanceId:
+    Value: !Ref WebAppInstance
+  PublicIP:
+    Value: !GetAtt WebAppInstance.PublicIp
