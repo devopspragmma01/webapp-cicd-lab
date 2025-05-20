@@ -25,7 +25,7 @@ Resources:
   WebAppInstance:
       Type: AWS::EC2::Instance
       Properties:
-        InstanceType: t2.micro
+        InstanceType: t3.micro
         IamInstanceProfile: !Ref InstanceProfile
         ImageId: ami-0c2b8ca1dad447f8a # Amazon Linux 2 (us-east-1)
         SecurityGroups:
